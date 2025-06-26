@@ -18,6 +18,9 @@ docker-compose.yml
 postgres_data/
 pgadmin_data/
 
+# Frontend
+frontend/node_modules/
+
 # OS
 .DS_Store
 Thumbs.db
