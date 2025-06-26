@@ -76,7 +76,7 @@ docker-compose up -d
 
 ### 6. **Run the Backend**
 ```bash
-npm start
+node server.js
 ```
 
 ### 7. **Run the Frontend**
