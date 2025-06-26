@@ -1,0 +1,29 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# dotenv environment files
+.env
+.env.*
+!env.example
+
+# Database scripts and local setup
+database-setup.sql
+setup-database.bat
+
+# Docker
+docker-compose.yml
+postgres_data/
+pgadmin_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Misc
+*.local
