@@ -483,6 +483,44 @@ module.exports = (io, socket) => {
     }
   }
 
+  // Add rebuy event
+  socket.on('rebuy', () => {
+    const playerIndex = socketIdToPlayerIndex[socket.id];
+    if (playerIndex === undefined || !game) {
+      socket.emit('errorMessage', 'You are not part of the game');
+      return;
+    }
+    const player = game.players[playerIndex];
+    if (player.chips > 0) {
+      socket.emit('errorMessage', 'You can only rebuy when you have 0 chips.');
+      return;
+    }
+    player.chips += 1000;
+    io.emit('gameState', {
+      players: game.players.map(p => {
+        const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
+        const currentHand = game.evaluatePlayerHand(p.name);
+        return {
+          name: p.name,
+          chips: p.chips,
+          currentBet: p.currentBet,
+          totalBet: p.totalBet,
+          folded: p.folded,
+          isSmallBlind: p.isSmallBlind,
+          isBigBlind: p.isBigBlind,
+          holeCards: holeCards,
+          currentHand: currentHand
+        };
+      }),
+      communityCards: game.communityCards.map(c => ({ rank: c.rank, suit: c.suit })),
+      pot: game.pot,
+      currentBet: game.currentBet,
+      currentPlayer: game.players[game.currentPlayerIndex]?.name,
+      round: game.round,
+      dealer: game.getDealerName(),
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     // Remove player after timeout if they don't reconnect
