@@ -245,24 +245,10 @@ module.exports = (io, socket) => {
           game.dealRiver();
           lastAggressorIndex = null;
         } else if (game.round === 'river') {
-          // Showdown
-          const winners = game.showdown();
-          // Persist chips for all players after showdown
-          for (const p of game.players) {
-            try { await setUserChips(p.name, p.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
-          }
+          // Instead of determining winners now, defer until all show/muck
           // Prepare showdown info for all players
           const showdownPlayers = game.players.map(p => {
             const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
-            console.log(`[SOCKET] Showdown hole cards for ${p.name}:`, holeCards);
-            
-            // Validate showdown cards
-            holeCards.forEach((card, index) => {
-              if (!card || !card.rank || !card.suit) {
-                console.error(`[SOCKET] ERROR: Invalid showdown card at index ${index} for ${p.name}:`, card);
-              }
-            });
-            
             return {
               name: p.name,
               holeCards: holeCards,
@@ -271,30 +257,31 @@ module.exports = (io, socket) => {
             };
           });
           const showdownInfo = {
-            winners: winners.map(w => ({
-              name: w.name,
-              chips: w.chips,
-              hand: w.hand.name,
-            })),
+            winners: [], // No winners yet
             showdownPlayers,
             lastAggressor: lastAggressorIndex !== null ? game.players[lastAggressorIndex]?.name : null
           };
           io.emit('showdown', showdownInfo);
           lastShowdownInfo = showdownInfo;
+          showChoices = {};
 
           // Set timeout to auto-reset after 30 seconds if players don't show/muck
           if (showdownTimeout) clearTimeout(showdownTimeout);
           showdownTimeout = setTimeout(() => {
             console.log('Auto-resetting game state after showdown timeout');
-            resetGameState();
+            // If not all have acted, force all remaining to muck
+            if (lastShowdownInfo) {
+              lastShowdownInfo.showdownPlayers.forEach(p => {
+                if (!p.folded && !showChoices[p.name]) {
+                  showChoices[p.name] = 'muck';
+                }
+              });
+              io.emit('showChoicesUpdate', showChoices);
+              checkAndResetGameState();
+            }
           }, 30000); // 30 seconds
-
           // Do NOT reset game/player state here. Wait until all players are ready.
-          if (winners.length === 1) {
-            actionLog.push(`${winners[0].name} wins the pot of ${game.pot} chips!`);
-          } else {
-            actionLog.push(`Pot is split between: ${winners.map(w => w.name).join(', ')}`);
-          }
+          actionLog.push(`Showdown! Waiting for all players to show or muck.`);
           return;
         }
       }
@@ -459,24 +446,84 @@ module.exports = (io, socket) => {
   // Helper function to check if all players have shown/mucked and reset game state
   function checkAndResetGameState() {
     if (!lastShowdownInfo) return;
-    
-    const nonWinners = lastShowdownInfo.showdownPlayers.filter(p => 
-      !lastShowdownInfo.winners.some(w => w.name === p.name) && !p.folded
-    );
-    
-    // If there are no non-winners (everyone is a winner or folded), start review phase
-    if (nonWinners.length === 0) {
-      startReviewPhase();
-      return;
+    // Only consider non-folded players
+    const eligible = lastShowdownInfo.showdownPlayers.filter(p => !p.folded);
+    const allActed = eligible.every(p => showChoices[p.name] === 'show' || showChoices[p.name] === 'muck');
+    if (!allActed) return;
+
+    // Determine who showed
+    const showed = eligible.filter(p => showChoices[p.name] === 'show');
+    let winners = [];
+    let splitPot = false;
+    if (showed.length > 0) {
+      // Evaluate hands only for those who showed
+      const { Hand } = require('pokersolver');
+      const playerHands = showed.map(player => {
+        const combinedCards = [
+          ...(game.players.find(p => p.name === player.name)?.holeCards || []),
+          ...game.communityCards
+        ];
+        // Convert to pokersolver format
+        const rankMap = { 'A': 'A', 'K': 'K', 'Q': 'Q', 'J': 'J', '10': 'T', '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2' };
+        const suitMap = { '♠': 's', '♣': 'c', '♥': 'h', '♦': 'd' };
+        const formatted = combinedCards.map(c => rankMap[c.rank] + suitMap[c.suit]);
+        const hand = Hand.solve(formatted);
+        // Save for later use
+        const playerObj = game.players.find(p => p.name === player.name);
+        if (playerObj) playerObj.hand = hand;
+        return hand;
+      });
+      const winningHands = Hand.winners(playerHands);
+      winners = showed.filter((player, idx) => winningHands.includes(game.players.find(p => p.name === player.name)?.hand));
+    } else {
+      // No one showed: split pot among all eligible (non-folded) players
+      winners = eligible;
+      splitPot = true;
     }
-    
-    const allNonWinnersActed = nonWinners.every(p => 
-      showChoices[p.name] === 'show' || showChoices[p.name] === 'muck'
-    );
-    
-    if (allNonWinnersActed) {
-      startReviewPhase();
+    // Award pot
+    const potValue = game.pot;
+    const potShare = Math.floor(game.pot / winners.length);
+    winners.forEach(w => {
+      const playerObj = game.players.find(p => p.name === w.name);
+      if (playerObj) playerObj.chips += potShare;
+    });
+    game.pot = 0;
+    // Persist chips for all players after showdown
+    (async () => {
+      for (const p of game.players) {
+        try { await setUserChips(p.name, p.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
+      }
+    })();
+    // Action log
+    if (splitPot) {
+      actionLog.push(`No one showed. Pot of ${potValue} chips split between: ${winners.map(w => w.name).join(', ')}`);
+    } else if (winners.length === 1) {
+      actionLog.push(`${winners[0].name} wins the pot of ${potValue} chips!`);
+    } else {
+      actionLog.push(`Pot of ${potValue} chips is split between: ${winners.map(w => w.name).join(', ')}`);
     }
+    // Prepare showdown info for review phase
+    const showdownPlayers = game.players.map(p => {
+      const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
+      return {
+        name: p.name,
+        holeCards: holeCards,
+        hand: p.hand ? (p.hand.name || p.hand) : null,
+        folded: p.folded
+      };
+    });
+    const showdownInfo = {
+      winners: winners.map(w => ({
+        name: w.name,
+        chips: game.players.find(p => p.name === w.name)?.chips,
+        hand: game.players.find(p => p.name === w.name)?.hand?.name || null,
+      })),
+      showdownPlayers,
+      lastAggressor: lastAggressorIndex !== null ? game.players[lastAggressorIndex]?.name : null
+    };
+    io.emit('showdown', showdownInfo);
+    lastShowdownInfo = showdownInfo;
+    startReviewPhase();
   }
   
   // Helper function to start review phase

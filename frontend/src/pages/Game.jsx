@@ -401,14 +401,11 @@ export default function Game() {
             {players.map((player) => {
               // Determine if we should show this player's cards
               let showCards = false;
-              let playerHand = null;
               if (player.name === username) {
                 showCards = true;
               } else if (showdownInfo && showdownInfo.showdownPlayers) {
-                const sd = showdownInfo.showdownPlayers.find(p => p.name === player.name);
-                if (sd) {
+                if (showChoices[player.name] === 'show') {
                   showCards = true;
-                  playerHand = sd.hand;
                 }
               }
               
@@ -448,28 +445,24 @@ export default function Game() {
                         Disconnected: removing in {disconnectTimers[player.name]}s
                       </div>
                     ) :
-                      // Only show cards if player is a winner or chose 'show', or if it's you
-                      ((player.name === username) ||
-                        (showdownInfo && (
-                          (showChoices[player.name] === 'show') ||
-                          (showdownInfo.winners && showdownInfo.winners.some(w => w.name === player.name))
-                        ))) && (player.holeCards || []).filter(card => card && card.rank && card.suit).length > 0 ? (
-                      (player.holeCards || []).filter(card => card && card.rank && card.suit).map((card, i) => (
-                        <Card key={i} rank={card.rank} suit={card.suit} />
-                      ))
-                    ) : !disconnectTimers[player.name] && (player.holeCards || []).filter(card => card && card.rank && card.suit).length > 0 ? (
-                      (player.holeCards || []).filter(card => card && card.rank && card.suit).map((_, i) => (
-                        <div key={i} className="card-img-container">
-                          <img src="/cards/back.png" alt="Face Down" className="card-img" />
-                          <div className="card-subtitle">Face Down</div>
-                        </div>
-                      ))
-                    ) : (
-                      // Show placeholders before round starts
-                      [0, 1].map(i => (
-                        <div key={i} className="card-placeholder"></div>
-                      ))
-                    )}
+                      // Only show cards if player chose 'show', or if it's you
+                      (showCards && (player.holeCards || []).filter(card => card && card.rank && card.suit).length > 0) ? (
+                        (player.holeCards || []).filter(card => card && card.rank && card.suit).map((card, i) => (
+                          <Card key={i} rank={card.rank} suit={card.suit} />
+                        ))
+                      ) : !disconnectTimers[player.name] && (player.holeCards || []).filter(card => card && card.rank && card.suit).length > 0 ? (
+                        (player.holeCards || []).filter(card => card && card.rank && card.suit).map((_, i) => (
+                          <div key={i} className="card-img-container">
+                            <img src="/cards/back.png" alt="Face Down" className="card-img" />
+                            <div className="card-subtitle">Face Down</div>
+                          </div>
+                        ))
+                      ) : (
+                        // Show placeholders before round starts
+                        [0, 1].map(i => (
+                          <div key={i} className="card-placeholder"></div>
+                        ))
+                      )}
                   </div>
                 </li>
               );
@@ -514,7 +507,6 @@ export default function Game() {
 
           {/* Show/Muck buttons after showdown */}
           {showdownInfo && (() => {
-            const isWinner = showdownInfo.winners && showdownInfo.winners.some(w => w.name === username);
             const hasShownOrMucked = showChoices[username] === 'show' || showChoices[username] === 'muck';
             const canShowNow = canShowFirst === username || 
                               (canShowFirst && showChoices[canShowFirst]) || 
@@ -530,21 +522,6 @@ export default function Game() {
                   {reviewCountdown > 0 && (
                     <div style={{ color: '#ff9800', fontWeight: 'bold' }}>
                       Next round starting in {reviewCountdown} seconds
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            
-            if (isWinner) {
-              return (
-                <div className="showdown-actions-area">
-                  <div style={{ marginBottom: 8, color: '#ffd700', fontSize: '1rem', fontWeight: 'bold' }}>
-                    🏆 You won! No need to show or muck your hand.
-                  </div>
-                  {showdownCountdown > 0 && (
-                    <div style={{ color: '#ff9800', fontWeight: 'bold' }}>
-                      Review phase starting in {showdownCountdown} seconds
                     </div>
                   )}
                 </div>
