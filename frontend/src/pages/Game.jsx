@@ -430,15 +430,6 @@ export default function Game() {
                       ))
                     )}
                   </div>
-                  {showCards && playerHand && (
-                    <div style={{ color: '#ffd700', fontWeight: 'bold', marginTop: 2 }}>Hand: {playerHand}</div>
-                  )}
-                  {/* Show current hand ranking for other players when cards are visible */}
-                  {!showCards && player.currentHand && (showChoices[player.name] === 'show' || (showdownInfo && showdownInfo.winners && showdownInfo.winners.some(w => w.name === player.name))) && (
-                    <div className="other-player-hand">
-                      Current: {player.currentHand.name}
-                    </div>
-                  )}
                 </li>
               );
             })}
