@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import "./Game.css"; // Ensure this CSS file exists
 
@@ -63,6 +63,7 @@ export default function Game() {
   const [reviewPhase, setReviewPhase] = useState(false); // Track if we're in review phase
   const [reviewCountdown, setReviewCountdown] = useState(15); // Countdown for review phase
   const [actionLog, setActionLog] = useState([]);
+  const actionLogRef = useRef(null);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -227,6 +228,13 @@ export default function Game() {
     };
   }, [reviewPhase, reviewCountdown]);
 
+  // Auto-scroll action log to bottom when it updates
+  useEffect(() => {
+    if (actionLogRef.current) {
+      actionLogRef.current.scrollTop = actionLogRef.current.scrollHeight;
+    }
+  }, [actionLog]);
+
   function handleRaise() {
     setShowRaiseInput(true);
   }
@@ -284,8 +292,16 @@ export default function Game() {
 
   return (
     <div className="casino-background">
+      {/* Action Log Sidebar */}
+      <div className="action-log-sidebar" ref={actionLogRef}>
+        <h4>Action Log</h4>
+        <ul>
+          {actionLog.map((entry, idx) => (
+            <li key={idx}>{entry}</li>
+          ))}
+        </ul>
+      </div>
       <div className="poker-table">
-
         <div className="table-center">
           <h2 className="table-title">Texas Hold'em Poker</h2>
           <p><b>Round:</b> {round}</p>
@@ -311,6 +327,31 @@ export default function Game() {
               {players.length >= 2 && players.every(p => p.ready) && (
                 <button onClick={handleStartRound} style={{ padding: '10px 24px', fontSize: '1.1rem', fontWeight: 'bold', background: '#2196f3', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer'}}>Start Round</button>
               )}
+              {/* Rebuy Button: Only show if you have 0 chips and in ready up screen */}
+              {(() => {
+                const me = players.find(p => p.name === username);
+                if (me && me.chips === 0) {
+                  return (
+                    <button
+                      onClick={() => socket.emit('rebuy')}
+                      style={{
+                        padding: '12px 32px',
+                        fontSize: '1.2rem',
+                        fontWeight: 'bold',
+                        background: '#ff9800',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        marginBottom: 16,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Rebuy 1000 Chips
+                    </button>
+                  );
+                }
+                return null;
+              })()}
             </div>
           )}
 
@@ -471,32 +512,6 @@ export default function Game() {
             )}
           </div>
 
-          {/* Rebuy Button: Only show if you have 0 chips */}
-          {(() => {
-            const me = players.find(p => p.name === username);
-            if (me && me.chips === 0) {
-              return (
-                <button
-                  onClick={() => socket.emit('rebuy')}
-                  style={{
-                    padding: '12px 32px',
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold',
-                    background: '#ff9800',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 8,
-                    marginBottom: 16,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Rebuy 1000 Chips
-                </button>
-              );
-            }
-            return null;
-          })()}
-
           {/* Show/Muck buttons after showdown */}
           {showdownInfo && (() => {
             const isWinner = showdownInfo.winners && showdownInfo.winners.some(w => w.name === username);
@@ -613,16 +628,6 @@ export default function Game() {
             </p>
           )}
           {error && <p className="error-message">{error}</p>}
-        </div>
-
-        {/* Action Log Display */}
-        <div className="action-log">
-          <h4>Action Log</h4>
-          <ul>
-            {actionLog.map((entry, idx) => (
-              <li key={idx}>{entry}</li>
-            ))}
-          </ul>
         </div>
       </div>
 

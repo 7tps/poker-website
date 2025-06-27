@@ -444,4 +444,36 @@
   margin-bottom: 4px;
   font-family: monospace;
 }
+
+.action-log-sidebar {
+  position: fixed;
+  top: 90px;
+  left: 32px;
+  width: 260px;
+  background: rgba(30, 50, 30, 0.97);
+  border-radius: 14px;
+  padding: 18px 24px 18px 18px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.18);
+  z-index: 1200;
+  color: #fff;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.action-log-sidebar h4 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #ffd700;
+  font-size: 1.1rem;
+  letter-spacing: 1px;
+}
+.action-log-sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.action-log-sidebar li {
+  margin-bottom: 4px;
+  font-family: monospace;
+  font-size: 1rem;
+}
   
