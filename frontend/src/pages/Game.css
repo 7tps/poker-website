@@ -424,4 +424,24 @@
   border-radius: 4px;
   display: inline-block;
 }
+
+.action-log {
+  background: #222;
+  color: #fff;
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin: 16px 0;
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 1rem;
+}
+.action-log ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.action-log li {
+  margin-bottom: 4px;
+  font-family: monospace;
+}
   

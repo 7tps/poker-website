@@ -62,6 +62,7 @@ export default function Game() {
   const [showdownCountdown, setShowdownCountdown] = useState(30); // Countdown for showdown phase
   const [reviewPhase, setReviewPhase] = useState(false); // Track if we're in review phase
   const [reviewCountdown, setReviewCountdown] = useState(15); // Countdown for review phase
+  const [actionLog, setActionLog] = useState([]);
 
   useEffect(() => {
     const storedUsername = localStorage.getItem("username");
@@ -81,6 +82,7 @@ export default function Game() {
       setDealer(state.dealer || "");
       setError("");
       setStatusMessage("");
+      setActionLog(state.actionLog || []);
 
       // Reset showdown-related state when starting a new round
       if (state.communityCards.length === 0) {
@@ -620,6 +622,16 @@ export default function Game() {
             </p>
           )}
           {error && <p className="error-message">{error}</p>}
+        </div>
+
+        {/* Action Log Display */}
+        <div className="action-log">
+          <h4>Action Log</h4>
+          <ul>
+            {actionLog.map((entry, idx) => (
+              <li key={idx}>{entry}</li>
+            ))}
+          </ul>
         </div>
       </div>
 

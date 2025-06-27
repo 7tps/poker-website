@@ -10,6 +10,7 @@ let showChoices = {};
 let lastShowdownInfo = null;
 let lastAggressorIndex = null;
 let showdownTimeout = null; // Timeout for auto-reset after showdown
+let actionLog = [];
 
 function allPlayersActed(game) {
   // Simple check: all active players have matched currentBet or folded
@@ -60,6 +61,7 @@ module.exports = (io, socket) => {
         currentPlayer: game.players[game.currentPlayerIndex]?.name,
         round: game.round,
         dealer: game.getDealerName(),
+        actionLog,
       });
     }
 
@@ -97,6 +99,10 @@ module.exports = (io, socket) => {
 
     console.log(`Player joined: ${username}`);
 
+    // On new game, reset action log
+    if (game.players.length === 0) actionLog = [];
+    actionLog.push(`${username} joined the game.`);
+
     io.emit('gameState', {
       players: game.players.map(p => {
         const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
@@ -130,6 +136,7 @@ module.exports = (io, socket) => {
       currentPlayer: game.players[game.currentPlayerIndex]?.name,
       round: game.round,
       dealer: game.getDealerName(),
+      actionLog,
     });
   });
 
@@ -155,11 +162,13 @@ module.exports = (io, socket) => {
 
       if (action.type === 'fold') {
         game.playerFold(playerIndex);
+        actionLog.push(`${player.name} folded.`);
         // Check if only one player remains unfolded
         const activePlayers = game.players.filter(p => !p.folded);
         if (activePlayers.length === 1) {
           // Award pot to the last remaining player
           activePlayers[0].chips += game.pot;
+          actionLog.push(`${activePlayers[0].name} wins the pot of ${game.pot} chips!`);
           // Persist chips to DB
           try { await setUserChips(activePlayers[0].name, activePlayers[0].chips); } catch (e) { console.error('Error saving chips to DB:', e); }
           const showdownPlayers = game.players.map(p => ({
@@ -200,7 +209,15 @@ module.exports = (io, socket) => {
           socket.emit('errorMessage', 'Not enough chips');
           return;
         }
-        game.playerBet(playerIndex, betAmount - player.currentBet); // bet difference
+        const diff = betAmount - player.currentBet;
+        if (diff === 0) {
+          actionLog.push(`${player.name} checked.`);
+        } else if (betAmount === game.currentBet) {
+          actionLog.push(`${player.name} called (${betAmount} chips).`);
+        } else {
+          actionLog.push(`${player.name} raised to ${betAmount} chips.`);
+        }
+        game.playerBet(playerIndex, diff);
         lastAggressorIndex = playerIndex;
         // Persist chips to DB after bet
         try { await setUserChips(player.name, player.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
@@ -273,6 +290,11 @@ module.exports = (io, socket) => {
           }, 30000); // 30 seconds
 
           // Do NOT reset game/player state here. Wait until all players are ready.
+          if (winners.length === 1) {
+            actionLog.push(`${winners[0].name} wins the pot of ${game.pot} chips!`);
+          } else {
+            actionLog.push(`Pot is split between: ${winners.map(w => w.name).join(', ')}`);
+          }
           return;
         }
       }
@@ -311,6 +333,7 @@ module.exports = (io, socket) => {
         currentPlayer: game.players[game.currentPlayerIndex]?.name,
         round: game.round,
         dealer: game.getDealerName(),
+        actionLog,
       });
       const end = Date.now();
       console.log(`[TIMING] playerAction '${action.type}' processed in ${end - start}ms`);
@@ -363,6 +386,7 @@ module.exports = (io, socket) => {
           currentPlayer: game.players[game.currentPlayerIndex]?.name,
           round: game.round,
           dealer: game.getDealerName(),
+          actionLog,
         });
       }
     }
@@ -391,6 +415,7 @@ module.exports = (io, socket) => {
         currentPlayer: game.players[game.currentPlayerIndex]?.name,
         round: game.round,
         dealer: game.getDealerName(),
+        actionLog,
       });
     }
   });
@@ -522,6 +547,7 @@ module.exports = (io, socket) => {
         currentPlayer: game.players[game.currentPlayerIndex]?.name,
         round: game.round,
         dealer: game.getDealerName(),
+        actionLog,
       });
     }
   }
@@ -541,6 +567,7 @@ module.exports = (io, socket) => {
     player.chips += 1000;
     // Persist chips to DB after rebuy
     try { await setUserChips(player.name, player.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
+    actionLog.push(`${player.name} rebuys for 1000 chips.`);
     io.emit('gameState', {
       players: game.players.map(p => {
         const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
@@ -563,6 +590,7 @@ module.exports = (io, socket) => {
       currentPlayer: game.players[game.currentPlayerIndex]?.name,
       round: game.round,
       dealer: game.getDealerName(),
+      actionLog,
     });
   });
 
@@ -604,6 +632,7 @@ module.exports = (io, socket) => {
             currentPlayer: game.players[game.currentPlayerIndex]?.name,
             round: game.round,
             dealer: game.getDealerName(),
+            actionLog,
           });
         }
         // Notify all clients of removal
