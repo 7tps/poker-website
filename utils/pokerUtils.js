@@ -232,22 +232,25 @@ class PokerGame {
 
     showdown() {
         const activePlayers = this.getActivePlayers();
+        if (activePlayers.length === 0) return [];
 
-        let bestRank = -1;
-        let winners = [];
-
-        for (const player of activePlayers) {
+        // Build pokersolver hands for each player
+        const playerHands = activePlayers.map(player => {
             const combinedCards = [...player.holeCards, ...this.communityCards];
-            const hand = evaluateHand(combinedCards);
-            player.hand = hand;
+            // Convert to pokersolver format
+            const rankMap = { 'A': 'A', 'K': 'K', 'Q': 'Q', 'J': 'J', '10': 'T', '9': '9', '8': '8', '7': '7', '6': '6', '5': '5', '4': '4', '3': '3', '2': '2' };
+            const suitMap = { '♠': 's', '♣': 'c', '♥': 'h', '♦': 'd' };
+            const formatted = combinedCards.map(c => rankMap[c.rank] + suitMap[c.suit]);
+            const hand = Hand.solve(formatted);
+            player.hand = hand; // Save for later use
+            return hand;
+        });
 
-            if (hand.handRank > bestRank) {
-                bestRank = hand.handRank;
-                winners = [player];
-            } else if (hand.handRank === bestRank) {
-                winners.push(player);
-            }
-        }
+        // Use pokersolver to determine the winner(s)
+        const winningHands = Hand.winners(playerHands);
+
+        // Map back to your player objects
+        const winners = activePlayers.filter((player) => winningHands.includes(player.hand));
 
         this.rotateDealer();
 

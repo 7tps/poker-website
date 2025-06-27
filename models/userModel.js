@@ -9,4 +9,13 @@ async function getUserByUsername(username) {
   return result.rows[0];
 }
 
-module.exports = { createUser, getUserByUsername };
+async function getUserChips(username) {
+  const result = await pool.query('SELECT chips FROM users WHERE username = $1', [username]);
+  return result.rows[0]?.chips;
+}
+
+async function setUserChips(username, chips) {
+  await pool.query('UPDATE users SET chips = $1 WHERE username = $2', [chips, username]);
+}
+
+module.exports = { createUser, getUserByUsername, getUserChips, setUserChips };

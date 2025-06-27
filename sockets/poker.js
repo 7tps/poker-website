@@ -1,6 +1,7 @@
 // sockets/poker.js
 
 const { PokerGame } = require('../utils/pokerUtils');
+const { getUserChips, setUserChips } = require('../models/userModel');
 
 let game = null;
 let socketIdToPlayerIndex = {};
@@ -18,7 +19,7 @@ function allPlayersActed(game) {
 module.exports = (io, socket) => {
   console.log(`Player connected: ${socket.id}`);
 
-  socket.on('joinGame', (username) => {
+  socket.on('joinGame', async (username) => {
     if (!game) {
       game = new PokerGame([]);
       socketIdToPlayerIndex = {};
@@ -34,6 +35,32 @@ module.exports = (io, socket) => {
     if (disconnectTimeouts[username]) {
       clearTimeout(disconnectTimeouts[username]);
       delete disconnectTimeouts[username];
+      // Emit remove notice to clear disconnect notification on frontend for all players
+      io.emit('playerRemoveNotice', { username });
+      // Re-emit gameState to ensure all players see the correct cards
+      io.emit('gameState', {
+        players: game.players.map(p => {
+          const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
+          const currentHand = game.evaluatePlayerHand(p.name);
+          return {
+            name: p.name,
+            chips: p.chips,
+            currentBet: p.currentBet,
+            totalBet: p.totalBet,
+            folded: p.folded,
+            isSmallBlind: p.isSmallBlind,
+            isBigBlind: p.isBigBlind,
+            holeCards: holeCards,
+            currentHand: currentHand
+          };
+        }),
+        communityCards: game.communityCards.map(c => ({ rank: c.rank, suit: c.suit })),
+        pot: game.pot,
+        currentBet: game.currentBet,
+        currentPlayer: game.players[game.currentPlayerIndex]?.name,
+        round: game.round,
+        dealer: game.getDealerName(),
+      });
     }
 
     // Check if this username is already in the game
@@ -44,10 +71,18 @@ module.exports = (io, socket) => {
     } else {
       // Avoid duplicate joins by socket
       if (socketIdToPlayerIndex[socket.id] !== undefined) return;
+      // Load chips from DB
+      let chips = 1000;
+      try {
+        const dbChips = await getUserChips(username);
+        if (typeof dbChips === 'number') chips = dbChips;
+      } catch (e) {
+        console.error('Error loading chips from DB for', username, e);
+      }
       // Add new player
       game.players.push({
         name: username,
-        chips: 1000,
+        chips,
         holeCards: [],
         currentBet: 0,
         totalBet: 0,
@@ -98,7 +133,7 @@ module.exports = (io, socket) => {
     });
   });
 
-  socket.on('playerAction', (action) => {
+  socket.on('playerAction', async (action) => {
     const start = Date.now();
     try {
       const playerIndex = socketIdToPlayerIndex[socket.id];
@@ -125,6 +160,8 @@ module.exports = (io, socket) => {
         if (activePlayers.length === 1) {
           // Award pot to the last remaining player
           activePlayers[0].chips += game.pot;
+          // Persist chips to DB
+          try { await setUserChips(activePlayers[0].name, activePlayers[0].chips); } catch (e) { console.error('Error saving chips to DB:', e); }
           const showdownPlayers = game.players.map(p => ({
             name: p.name,
             holeCards: (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit })),
@@ -165,6 +202,8 @@ module.exports = (io, socket) => {
         }
         game.playerBet(playerIndex, betAmount - player.currentBet); // bet difference
         lastAggressorIndex = playerIndex;
+        // Persist chips to DB after bet
+        try { await setUserChips(player.name, player.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
       } else {
         socket.emit('errorMessage', 'Unknown action');
         return;
@@ -191,6 +230,10 @@ module.exports = (io, socket) => {
         } else if (game.round === 'river') {
           // Showdown
           const winners = game.showdown();
+          // Persist chips for all players after showdown
+          for (const p of game.players) {
+            try { await setUserChips(p.name, p.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
+          }
           // Prepare showdown info for all players
           const showdownPlayers = game.players.map(p => {
             const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
@@ -484,7 +527,7 @@ module.exports = (io, socket) => {
   }
 
   // Add rebuy event
-  socket.on('rebuy', () => {
+  socket.on('rebuy', async () => {
     const playerIndex = socketIdToPlayerIndex[socket.id];
     if (playerIndex === undefined || !game) {
       socket.emit('errorMessage', 'You are not part of the game');
@@ -496,6 +539,8 @@ module.exports = (io, socket) => {
       return;
     }
     player.chips += 1000;
+    // Persist chips to DB after rebuy
+    try { await setUserChips(player.name, player.chips); } catch (e) { console.error('Error saving chips to DB:', e); }
     io.emit('gameState', {
       players: game.players.map(p => {
         const holeCards = (p.holeCards || []).filter(c => c).map(c => ({ rank: c.rank, suit: c.suit }));
