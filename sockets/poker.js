@@ -553,6 +553,9 @@ module.exports = (io, socket) => {
         showdownTimeout = null;
       }
       
+      // Rotate dealer (and thus blinds) for next hand
+      game.rotateDealer();
+      
       // Reset all players for next hand
       game.players.forEach(p => {
         p.ready = false;
